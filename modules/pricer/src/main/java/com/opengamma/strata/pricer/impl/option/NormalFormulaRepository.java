@@ -284,6 +284,10 @@ public final class NormalFormulaRepository {
     ValueDerivatives price = priceAdjoint(forward, strike, timeToExpiry, sigma, numeraire, putCall);
     double vega = price.getDerivative(1);
     double change = (price.getValue() - optionPrice) / vega;
+    if (!Double.isFinite(change)) {
+      // e.g. an extreme initial volatility where vega is not finite
+      return impliedVolatilityBracketed(optionPrice, forward, strike, timeToExpiry, numeraire, putCall);
+    }
     double sign = Math.signum(change);
     change = sign * Math.min(maxChange, Math.abs(change));
     if (change > 0 && change > sigma) {
@@ -295,25 +299,37 @@ public final class NormalFormulaRepository {
       price = priceAdjoint(forward, strike, timeToExpiry, sigma, numeraire, putCall);
       vega = price.getDerivative(1);
       change = (price.getValue() - optionPrice) / vega;
+      if (!Double.isFinite(change) || count++ > MAX_ITERATIONS) {
+        return impliedVolatilityBracketed(optionPrice, forward, strike, timeToExpiry, numeraire, putCall);
+      }
       sign = Math.signum(change);
       change = sign * Math.min(maxChange, Math.abs(change));
       if (change > 0 && change > sigma) {
         change = 0.9d * sigma;
       }
-      if (count++ > MAX_ITERATIONS) {
-        BracketRoot bracketer = new BracketRoot();
-        BisectionSingleRootFinder rootFinder = new BisectionSingleRootFinder(EPS);
-        Function<Double, Double> func = new Function<Double, Double>() {
-          @Override
-          public Double apply(Double volatility) {
-            return numeraire * price(forward, strike, timeToExpiry, volatility, putCall) - optionPrice;
-          }
-        };
-        double[] range = bracketer.getBracketedPoints(func, 0d, 10d);
-        return rootFinder.getRoot(func, range[0], range[1]);
-      }
     }
     return sigma;
+  }
+
+  // fallback used when the Newton iteration does not converge or produces a non-finite step
+  private static double impliedVolatilityBracketed(
+      double optionPrice,
+      double forward,
+      double strike,
+      double timeToExpiry,
+      double numeraire,
+      PutCall putCall) {
+
+    BracketRoot bracketer = new BracketRoot();
+    BisectionSingleRootFinder rootFinder = new BisectionSingleRootFinder(EPS);
+    Function<Double, Double> func = new Function<Double, Double>() {
+      @Override
+      public Double apply(Double volatility) {
+        return numeraire * price(forward, strike, timeToExpiry, volatility, putCall) - optionPrice;
+      }
+    };
+    double[] range = bracketer.getBracketedPoints(func, 0d, 10d);
+    return rootFinder.getRoot(func, range[0], range[1]);
   }
 
   /**
