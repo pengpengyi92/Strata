@@ -141,6 +141,19 @@ public class NormalFormulaRepositoryImpliedVolatilityTest {
   }
 
   @Test
+  public void implied_volatility_extreme_initial_guess() {
+    // ATM: price = numeraire * sigma * sqrt(T) / sqrt(2 pi), so sigma = sqrt(2 pi) * price / (numeraire * sqrt(T))
+    double expected = Math.sqrt(2d * Math.PI) * 1d / (2d * Math.sqrt(4d));
+    double[] initialGuesses = {Double.MAX_VALUE / 2, Double.MAX_VALUE, 1e300, -1e300};
+    for (double initialGuess : initialGuesses) {
+      for (PutCall putCall : PutCall.values()) {
+        double computed = NormalFormulaRepository.impliedVolatility(1d, 100d, 100d, 4d, initialGuess, 2d, putCall);
+        assertThat(computed).isCloseTo(expected, offset(1e-8));
+      }
+    }
+  }
+
+  @Test
   public void intrinsic_price() {
     NormalFunctionData data = NormalFunctionData.of(1.0, 1.0, 0.01);
     EuropeanVanillaOption option1 = EuropeanVanillaOption.of(0.5, 1.0, PutCall.CALL);
